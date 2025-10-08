@@ -1,4 +1,5 @@
-from mcp_creator.rag_index import split_markdown_sections, build_chunks, RAGIndex
+from mcp_creator.rag_index import RAGIndex, build_chunks, split_markdown_sections
+
 
 def test_split_and_query():
     md = "# A\ntext a\n\n## A1\ntext a1\n\n# B\ntext b"

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 from typing import Any
 
@@ -9,7 +10,9 @@ except Exception as e:  # pragma: no cover
     _IMPORT_ERR = e
 
 from pydantic import BaseModel, Field
+
 from .rag_index import bootstrap_index
+
 
 class SearchResult(BaseModel):
     id: str
@@ -20,10 +23,12 @@ class SearchResult(BaseModel):
     order: int
     score: float | None = None
 
+
 class ScaffoldTool(BaseModel):
     name: str
     docstring: str
     params: dict[str, str] = Field(default_factory=dict)
+
 
 class ScaffoldRequest(BaseModel):
     server_name: str
@@ -31,24 +36,21 @@ class ScaffoldRequest(BaseModel):
     resources: list[str] = Field(default_factory=list)
     prompts: list[str] = Field(default_factory=list)
 
+
 def _server_code(req: ScaffoldRequest) -> str:
     tools_code = "".join(
         f"@mcp.tool()\n"
         f"def {t.name}({', '.join([f'{k}: {v}' for k,v in t.params.items()])}) -> str:\n"
-        f"    \"\"\"{t.docstring}\"\"\"\n"
+        f'    """{t.docstring}"""\n'
         f"    return 'TODO: implement {t.name}'\n\n"
         for t in req.tools
     )
     res_code = "".join(
-        f"@mcp.resource('spec://{r}')\n"
-        f"def res_{i}() -> str:\n"
-        f"    return 'resource {r}'\n\n"
+        f"@mcp.resource('spec://{r}')\n" f"def res_{i}() -> str:\n" f"    return 'resource {r}'\n\n"
         for i, r in enumerate(req.resources)
     )
     prm_code = "".join(
-        f"@mcp.prompt()\n"
-        f"def prompt_{i}() -> str:\n"
-        f"    return 'Use this prompt: {p}'\n\n"
+        f"@mcp.prompt()\n" f"def prompt_{i}() -> str:\n" f"    return 'Use this prompt: {p}'\n\n"
         for i, p in enumerate(req.prompts)
     )
     return (
@@ -61,9 +63,11 @@ def _server_code(req: ScaffoldRequest) -> str:
         "    main()\n"
     )
 
+
 def main():  # pragma: no cover
     if FastMCP is None:
-        print("""
+        print(
+            """
 This is an MCP stdio server stub.
 To enable it, install the MCP Python package:
 
@@ -71,7 +75,8 @@ To enable it, install the MCP Python package:
 
 Then run:
     python -m mcp_creator.mcp_builder_server
-""")
+"""
+        )
         print(f"Import error: {_IMPORT_ERR}")
         return
 
@@ -99,13 +104,16 @@ Then run:
         return {
             "context": context,
             "citations": citations,
-            "instructions": (
-                "Answer strictly from the provided context and cite (title,/id,URL)."
-            ),
+            "instructions": ("Answer strictly from the provided context and cite (title,/id,URL)."),
         }
 
     @mcp.tool()
-    def server_scaffold(server_name: str, tools_json: str = "[]", resources_json: str = "[]", prompts_json: str = "[]") -> dict[str, Any]:
+    def server_scaffold(
+        server_name: str,
+        tools_json: str = "[]",
+        resources_json: str = "[]",
+        prompts_json: str = "[]",
+    ) -> dict[str, Any]:
         tools = [ScaffoldTool(**t) for t in json.loads(tools_json)]
         req = ScaffoldRequest(
             server_name=server_name,
@@ -113,13 +121,21 @@ Then run:
             resources=json.loads(resources_json),
             prompts=json.loads(prompts_json),
         )
+        pyproject_content = (
+            "[project]\\n"
+            'name = "generated-mcp-server"\\n'
+            'version = "0.0.1"\\n'
+            'requires-python = ">=3.10"\\n'
+            'dependencies = ["mcp[cli]>=1.2.0"]\\n'
+        )
         files = [
             {"path": "server.py", "content": _server_code(req)},
-            {"path": "pyproject.toml", "content": '[project]\\nname = "generated-mcp-server"\\nversion = "0.0.1"\\nrequires-python = ">=3.10"\\ndependencies = ["mcp[cli]>=1.2.0"]\\n'}
+            {"path": "pyproject.toml", "content": pyproject_content},
         ]
         return {"files": files, "notes": "Edit tool bodies and add tests."}
 
     mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     main()

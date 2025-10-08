@@ -1,7 +1,11 @@
 from __future__ import annotations
-import os, re, hashlib, pathlib, asyncio
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
+
+import hashlib
+import os
+import pathlib
+import re
+from dataclasses import asdict, dataclass
+from typing import Any
 
 import httpx
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -9,6 +13,7 @@ from sklearn.metrics.pairwise import linear_kernel
 
 LLMS_FULL_URL = "https://modelcontextprotocol.io/llms-full.txt"
 CACHE_DIR = os.environ.get("MCP_CREATOR_CACHE", "data")
+
 
 @dataclass
 class Chunk:
@@ -20,12 +25,14 @@ class Chunk:
     order: int
     source: str = "llms-full.txt"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         return d
 
+
 def _hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
 
 def split_markdown_sections(text: str) -> list[tuple[list[str], str]]:
     """Return [(heading_hierarchy, section_text), …] from markdown."""
@@ -49,6 +56,7 @@ def split_markdown_sections(text: str) -> list[tuple[list[str], str]]:
         sections.append((current_h.copy(), "\n".join(buf).strip()))
     return sections
 
+
 async def download_llms_full(cache_dir: str = CACHE_DIR) -> str:
     os.makedirs(cache_dir, exist_ok=True)
     path = pathlib.Path(cache_dir) / "llms-full.txt"
@@ -59,6 +67,7 @@ async def download_llms_full(cache_dir: str = CACHE_DIR) -> str:
         r.raise_for_status()
         path.write_text(r.text, encoding="utf-8")
     return str(path)
+
 
 def build_chunks(llms_text: str, window_chars: int = 5000) -> list[Chunk]:
     sections = split_markdown_sections(llms_text)
@@ -84,33 +93,36 @@ def build_chunks(llms_text: str, window_chars: int = 5000) -> list[Chunk]:
             order += 1
     return chunks
 
+
 class RAGIndex:
     """Simple TF‑IDF index over Chunks."""
+
     def __init__(self):
-        self.vectorizer: Optional[TfidfVectorizer] = None
+        self.vectorizer: TfidfVectorizer | None = None
         self.doc_matrix = None
         self.docs: list[str] = []
-        self.meta: list[Dict[str, Any]] = []
+        self.meta: list[dict[str, Any]] = []
 
-    def fit(self, chunks: list[Chunk]) -> "RAGIndex":
+    def fit(self, chunks: list[Chunk]) -> RAGIndex:
         self.docs = [c.text for c in chunks]
         self.meta = [c.to_dict() for c in chunks]
         self.vectorizer = TfidfVectorizer(stop_words="english")
         self.doc_matrix = self.vectorizer.fit_transform(self.docs)
         return self
 
-    def query(self, query: str, k: int = 6) -> list[Dict[str, Any]]:
+    def query(self, query: str, k: int = 6) -> list[dict[str, Any]]:
         if not self.vectorizer or self.doc_matrix is None:
             raise RuntimeError("Index not built. Call fit() first.")
         q_vec = self.vectorizer.transform([query])
         sims = linear_kernel(q_vec, self.doc_matrix).ravel()
         top_idx = sims.argsort()[::-1][:k]
-        out: list[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for i in top_idx:
             item = dict(self.meta[i])
             item["score"] = float(sims[i])
             out.append(item)
         return out
+
 
 async def bootstrap_index() -> RAGIndex:
     path = await download_llms_full()
